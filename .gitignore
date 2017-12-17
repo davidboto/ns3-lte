@@ -1,0 +1,26 @@
+# Ignore everything
+*
+
+# But not these files...
+!.gitignore
+!/src/lte/model/lte-ue-mac.h
+!/src/lte/model/lte-ue-mac.cc
+!/src/lte/model/lte-ue-cmac-sap.h
+!/src/lte/model/lte-ue-cmac-sap.cc
+!/src/lte/model/lte-rrc-sap.h
+!/src/lte/model/lte-rrc-sap.cc
+!/src/lte/model/lte-enb-rrc.h
+!/src/lte/model/lte-enb-rrc.cc
+!/src/lte/model/lte-enb-mac.h
+!/src/lte/model/lte-enb-mac.cc
+!/src/lte/model/lte-enb-cmac-sap.h
+!/src/lte/model/lte-enb-cmac-sap.cc
+!/src/lte/model/lte-ue-rrc.cc
+
+!/scratch/lte-ra-prodecure.cc
+!README.md
+
+# etc...
+
+# ...even if they are in subdirectories
+!*/
