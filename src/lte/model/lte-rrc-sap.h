@@ -231,6 +231,11 @@ public:
     uint8_t raResponseWindowSize;
   };
 
+  struct PRACHConfigCommon
+  {
+    uint16_t prachConfigIndex;
+  };
+
   struct RachConfigCommon
   {
     PreambleInfo preambleInfo;
@@ -246,6 +251,7 @@ public:
   {
     RachConfigCommon rachConfigCommon;
     PdschConfigCommon pdschConfigCommon;
+    PRACHConfigCommon prachConfigCommon;
   };
 
   struct RadioResourceConfigDedicated

@@ -25,7 +25,7 @@
 #include <ns3/pointer.h>
 #include <ns3/packet.h>
 #include <ns3/packet-burst.h>
-#include <ns3/random-variable.h>
+#include <ns3/random-variable-stream.h>
 
 #include "lte-ue-mac.h"
 #include "lte-ue-net-device.h"
@@ -37,9 +37,9 @@
 
 
 
-NS_LOG_COMPONENT_DEFINE ("LteUeMac");
-
 namespace ns3 {
+
+NS_LOG_COMPONENT_DEFINE ("LteUeMac");
 
 NS_OBJECT_ENSURE_REGISTERED (LteUeMac);
 
@@ -195,6 +195,7 @@ LteUeMac::GetTypeId (void)
 {
   static TypeId tid = TypeId ("ns3::LteUeMac")
     .SetParent<Object> ()
+    .SetGroupName("Lte")
     .AddConstructor<LteUeMac> ();
   return tid;
 }
@@ -223,6 +224,30 @@ LteUeMac::LteUeMac ()
   m_cmacSapProvider = new UeMemberLteUeCmacSapProvider (this);
   m_uePhySapUser = new UeMemberLteUePhySapUser (this);
   m_raPreambleUniformVariable = CreateObject<UniformRandomVariable> ();
+
+  // Defines 16 PRACH Configuration Index modes;
+  struct prachConfigInfo PRACHs[16] = {
+    { 0, {-1 ,1,-1,-1,-1,-1,-1,-1,-1,-1} }, // Even, 1
+    { 0, {-1,-1,-1,-1, 4,-1,-1,-1,-1,-1} }, // Even, 4
+    { 0, {-1,-1,-1,-1,-1,-1,-1, 7,-1,-1} }, // Even, 7
+    { 1, {-1, 1,-1,-1,-1,-1,-1,-1,-1,-1} }, // Any, 1
+    { 1, {-1,-1,-1,-1, 4,-1,-1,-1,-1,-1} }, // Any, 4
+    { 1, {-1,-1,-1,-1,-1,-1,-1, 7,-1,-1} }, // Any, 7
+    { 1, {-1, 1,-1,-1,-1,-1, 6,-1,-1,-1} }, // Any, 1, 6
+    { 1, {-1,-1, 2,-1,-1,-1,-1, 7,-1,-1} }, // Any, 2, 7
+    { 1, {-1,-1,-1, 3,-1,-1,-1,-1, 8,-1} }, // Any, 3, 8
+    { 1, {-1, 1,-1,-1, 4,-1,-1, 7,-1,-1} }, // Any, 1, 4, 7
+    { 1, {-1,-1, 2,-1,-1, 5,-1,-1, 8,-1} }, // Any, 2, 5, 8
+    { 1, {-1,-1,-1, 3,-1,-1, 6,-1,-1, 9} }, // Any, 3, 6, 9
+    { 1, { 0,-1, 2,-1, 4,-1, 6,-1, 8,-1} }, // Any, 0, 2, 4, 6, 8
+    { 1, {-1, 1,-1, 3,-1, 5,-1, 7,-1, 9} }, // Any, 1, 3, 5, 7, 9
+    { 1, { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9} }, // Any, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+    { 0, {-1,-1,-1,-1,-1,-1,-1,-1,-1, 9} }  // Any, 9
+  };
+
+  for(int i = 0; i< 16; i++){
+    prachConfigs.push_back(PRACHs[i]);
+  }
 }
 
 
@@ -297,7 +322,7 @@ LteUeMac::DoReportBufferStatus (LteMacSapProvider::ReportBufferStatusParameters 
   
   
   it = m_ulBsrReceived.find (params.lcid);
-  if (it!=m_ulBsrReceived.end ())
+  if (it != m_ulBsrReceived.end ())
     {
       // update entry
       (*it).second = params;
@@ -367,9 +392,71 @@ LteUeMac::RandomlySelectAndSendRaPreamble ()
   // 3GPP 36.321 5.1.1  
   NS_ASSERT_MSG (m_rachConfigured, "RACH not configured");
   // assume that there is no Random Access Preambles group B
-  m_raPreambleId = m_raPreambleUniformVariable->GetInteger (0, m_rachConfig.numberOfRaPreambles - 1);
-  bool contention = true;
-  SendRaPreamble (contention);
+
+  Time tfcurrent, tfrest, tnextRA, tti;
+  uint16_t deltaSubframes = 0;
+  bool transmite = false;
+  int m_subframeNoInt = int(m_subframeNo);
+  //int minSubframe = -1, maxSubframe = -1;
+  int i = int(m_prachConfigIndex);
+
+  // Subframes available positions availables;
+  std::vector <int> availablesSubframes;
+
+  tfcurrent = MilliSeconds(m_subframeNo*1.0) + MilliSeconds((m_frameNo-1)*10.0);
+  tfrest = tfcurrent - Simulator::Now();
+  tnextRA = MilliSeconds(0);
+  tti = MilliSeconds(1.0);
+
+  for(int j = 0; j < 10; j++)
+    {
+      if(prachConfigs[i].subframeNumber[j] != -1)
+        {
+          availablesSubframes.push_back(j+1);
+        }
+      if(prachConfigs[i].sysFrameNumber == 1)
+        {
+          if(prachConfigs[i].subframeNumber[j]+1 == m_subframeNoInt)
+            {
+              transmite = true;
+            }
+        }
+      else if( (prachConfigs[i].sysFrameNumber == 0) && (int(m_frameNo)%2 == 0) )
+        {
+          if(prachConfigs[i].subframeNumber[j]+1 == m_subframeNoInt)
+            {
+              transmite = true;
+            }
+        }
+    }
+  if(!transmite)
+    {
+      bool haveFrame = false;
+      for(int index = 0; index < (int)availablesSubframes.size(); index++)
+        {
+          if(m_subframeNoInt < availablesSubframes[index] && haveFrame == false)
+            {
+              deltaSubframes = (availablesSubframes[index]-1) - m_subframeNoInt;
+              haveFrame = true;
+            }
+        }
+      if(!haveFrame)
+        {
+          deltaSubframes = (10 + availablesSubframes[0]-1) - m_subframeNoInt;
+        }
+      if( ( prachConfigs[i].sysFrameNumber == 0 ) && ( int(m_frameNo)%2 ) != 0)
+        {
+          deltaSubframes += 10;
+        }
+      tnextRA = MilliSeconds(deltaSubframes*1.0) + tfrest;
+      Simulator::Schedule(tnextRA,&LteUeMac::RandomlySelectAndSendRaPreamble, this);
+    }
+  if(transmite)
+    {
+      m_raPreambleId = m_raPreambleUniformVariable->GetInteger (0, m_rachConfig.numberOfRaPreambles - 1);
+      bool contention = true;
+      SendRaPreamble (contention);
+    }
 }
    
 void
@@ -464,6 +551,7 @@ LteUeMac::DoConfigureRach (LteUeCmacSapProvider::RachConfig rc)
   NS_LOG_FUNCTION (this);
   m_rachConfig = rc;
   m_rachConfigured = true;
+  SetPrachConfigIndex(m_rachConfig.prachConfigIndex);
 }
 
 void 
@@ -543,8 +631,14 @@ LteUeMac::DoReceivePhyPdu (Ptr<Packet> p)
     {
       // packet is for the current user
       std::map <uint8_t, LcInfo>::const_iterator it = m_lcInfoMap.find (tag.GetLcid ());
-      NS_ASSERT_MSG (it != m_lcInfoMap.end (), "received packet with unknown lcid");
-      it->second.macSapUser->ReceivePdu (p);
+      if (it != m_lcInfoMap.end ())
+        {
+          it->second.macSapUser->ReceivePdu (p);
+        }
+      else
+        {
+          NS_LOG_WARN ("received packet with unknown lcid " << (uint32_t) tag.GetLcid ());
+        }
     }
 }
 
@@ -557,7 +651,7 @@ LteUeMac::DoReceiveLteControlMessage (Ptr<LteControlMessage> msg)
     {
       Ptr<UlDciLteControlMessage> msg2 = DynamicCast<UlDciLteControlMessage> (msg);
       UlDciListElement_s dci = msg2->GetDci ();
-      if (dci.m_ndi==1)
+      if (dci.m_ndi == 1)
         {
           // New transmission -> emtpy pkt buffer queue (for deleting eventual pkts not acked )
           Ptr<PacketBurst> pb = CreateObject <PacketBurst> ();
@@ -571,11 +665,11 @@ LteUeMac::DoReceiveLteControlMessage (Ptr<LteControlMessage> msg)
               if (((*itBsr).second.statusPduSize > 0) || ((*itBsr).second.retxQueueSize > 0) || ((*itBsr).second.txQueueSize > 0))
                 {
                   activeLcs++;
-                  if (((*itBsr).second.statusPduSize!=0)&&((*itBsr).second.statusPduSize < statusPduMinSize))
+                  if (((*itBsr).second.statusPduSize != 0)&&((*itBsr).second.statusPduSize < statusPduMinSize))
                     {
                       statusPduMinSize = (*itBsr).second.statusPduSize;
                     }
-                  if (((*itBsr).second.statusPduSize!=0)&&(statusPduMinSize == 0))
+                  if (((*itBsr).second.statusPduSize != 0)&&(statusPduMinSize == 0))
                     {
                       statusPduMinSize = (*itBsr).second.statusPduSize;
                     }
@@ -600,14 +694,14 @@ LteUeMac::DoReceiveLteControlMessage (Ptr<LteControlMessage> msg)
                 }
             }
           NS_LOG_LOGIC (this << " UE " << m_rnti << ": UL-CQI notified TxOpportunity of " << dci.m_tbSize << " => " << bytesPerActiveLc << " bytes per active LC" << " statusPduMinSize " << statusPduMinSize);
-          for (it = m_lcInfoMap.begin (); it!=m_lcInfoMap.end (); it++)
+          for (it = m_lcInfoMap.begin (); it != m_lcInfoMap.end (); it++)
             {
               itBsr = m_ulBsrReceived.find ((*it).first);
               NS_LOG_DEBUG (this << " Processing LC " << (uint32_t)(*it).first << " bytesPerActiveLc " << bytesPerActiveLc);
-              if ( (itBsr!=m_ulBsrReceived.end ()) &&
-                  ( ((*itBsr).second.statusPduSize > 0) ||
-                  ((*itBsr).second.retxQueueSize > 0) ||
-                  ((*itBsr).second.txQueueSize > 0)) )
+              if ( (itBsr != m_ulBsrReceived.end ())
+                   && ( ((*itBsr).second.statusPduSize > 0)
+                        || ((*itBsr).second.retxQueueSize > 0)
+                        || ((*itBsr).second.txQueueSize > 0)) )
                 {
                   if ((statusPduPriority) && ((*itBsr).second.statusPduSize == statusPduMinSize))
                     {
@@ -629,15 +723,15 @@ LteUeMac::DoReceiveLteControlMessage (Ptr<LteControlMessage> msg)
                         }
                       else
                         {
-                          if ((*itBsr).second.statusPduSize>bytesForThisLc)
+                          if ((*itBsr).second.statusPduSize > bytesForThisLc)
                             {
                               NS_FATAL_ERROR ("Insufficient Tx Opportunity for sending a status message");
                             }
                         }
                         
-                      if ((bytesForThisLc > 7) && // 7 is the min TxOpportunity useful for Rlc
-                         (((*itBsr).second.retxQueueSize > 0) ||
-                         ((*itBsr).second.txQueueSize > 0)))
+                      if ((bytesForThisLc > 7)    // 7 is the min TxOpportunity useful for Rlc
+                          && (((*itBsr).second.retxQueueSize > 0)
+                              || ((*itBsr).second.txQueueSize > 0)))
                         {
                           if ((*itBsr).second.retxQueueSize > 0)
                             {
@@ -771,7 +865,7 @@ LteUeMac::DoSubframeIndication (uint32_t frameNo, uint32_t subframeNo)
   m_frameNo = frameNo;
   m_subframeNo = subframeNo;
   RefreshHarqProcessesPacketBuffer ();
-  if ((Simulator::Now () >= m_bsrLast + m_bsrPeriodicity) && (m_freshUlBsr==true))
+  if ((Simulator::Now () >= m_bsrLast + m_bsrPeriodicity) && (m_freshUlBsr == true))
     {
       SendReportBufferStatus ();
       m_bsrLast = Simulator::Now ();
@@ -786,6 +880,17 @@ LteUeMac::AssignStreams (int64_t stream)
   NS_LOG_FUNCTION (this << stream);
   m_raPreambleUniformVariable->SetStream (stream);
   return 1;
+}
+
+uint16_t
+LteUeMac::GetPrachConfigIndex()
+{
+  return m_prachConfigIndex;
+}
+void
+LteUeMac::SetPrachConfigIndex(uint16_t index)
+{
+  m_prachConfigIndex = index;
 }
 
 } // namespace ns3

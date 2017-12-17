@@ -87,6 +87,13 @@ public:
   */
   int64_t AssignStreams (int64_t stream);
 
+  // David {
+ /**
+  * Assign a prach configuration index.
+  */
+  void SetPrachConfigIndex(uint16_t index);
+  uint16_t GetPrachConfigIndex();
+
 private:
   // forwarded from MAC SAP
   void DoTransmitPdu (LteMacSapProvider::TransmitPduParameters params);
@@ -157,6 +164,18 @@ private:
   uint32_t m_subframeNo;
   uint8_t m_raRnti;
   bool m_waitingForRaResponse;
+
+  uint16_t m_prachConfigIndex;
+
+  struct prachConfigInfo
+  {
+    int sysFrameNumber; // Even = 0, Any = 1;
+    int subframeNumber[10];
+  };
+
+  std::vector <prachConfigInfo> prachConfigs;
+
+
 };
 
 } // namespace ns3

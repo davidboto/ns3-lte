@@ -135,6 +135,8 @@ public:
     uint8_t numberOfRaPreambles;
     uint8_t preambleTransMax;
     uint8_t raResponseWindowSize;
+
+    uint16_t prachConfigIndex;
   };
 
   /** 
