@@ -13,3 +13,9 @@ Replace the files src/lte/model/* from your original installation of the ns3 wit
 	Config::SetDefault("ns3::LteEnbMac::PrachConfigIndex", UintegerValue(<PRACHConfigIndex>));
 
 Where PRACHConfigIndex is a integer value ranging from 0 to 15.
+
+## Quick starting
+
+After cloning this repo, run the `install.sh` file.
+
+`chmod +x install.sh`
